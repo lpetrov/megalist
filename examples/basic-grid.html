@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MegaList - Basic Grid Example</title>
+    <link href="../src/vendor/perfect-scrollbar/css/perfect-scrollbar.css" media="all" rel="stylesheet" />
+
+    <script type="text/javascript" src="../src/vendor/perfect-scrollbar/js/perfect-scrollbar.js"></script>
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.1.1.js"></script>
+    <script type="text/javascript" src="../src/megalist.js"></script>
+    <script type="text/javascript" src="./fixture.js"></script>
+
+    <style>
+        #exampleContainer {
+            position: relative;
+            width: 360px;
+            height: 320px;
+            border: 1px solid red;
+        }
+        .item {
+            width: 120px;
+            height: 120px;
+            text-align: center;
+            float: left;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .container .highlight-0 {background: #CCC}
+        .container .highlight-1 {background: #FFF}
+    </style>
+    <script type="text/javascript">
+        $(document).ready(function() {
+            // initialise
+            var megaList = new MegaList($('#exampleContainer'), {
+                itemWidth: 120,
+                itemHeight: 120,
+                itemRenderFunction: function(id) {
+                    return $('<div class="item highlight-' + (id % 2) + '">Item #' + (id + 1)+ '</div>');
+                }
+            });
+
+            // example only: expose the megaList object in the console, so that users can play with it in their
+            // console
+            window.megaList = megaList;
+
+            // example only: add some fake data
+            var fixture = new FakeDataGenerator();
+            for(var i = 0; i<10000; i++) {
+                var itemId = fixture.next();
+                megaList.add(itemId);
+            }
+
+
+            // render
+            megaList.initialRender();
+        });
+    </script>
+</head>
+<body>
+    <div class="container" id="exampleContainer"></div>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "devDependencies": {
+
+  },
+  "engines": {
+    "node": ">=0.10.0"
+  },
+  "h5bp-configs": {
+    "directories": {
+      "dist": "dist",
+      "src": "src",
+      "test": "test"
+    }
+  },
+  "homepage": "https://github.com/...",
+  "license": {
+    "type": "MIT",
+    "url": "https://github.com/lpetrov/megalist/blob/master/LICENSE.txt"
+  },
+  "name": "megalist",
+  "private": false,
+  "scripts": {
+    "build": "gulp build",
+    "test": "gulp archive && mocha --reporter spec --timeout 5000"
+  },
+  "version": "0.1"
+}
