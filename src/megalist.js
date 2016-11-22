@@ -1,9 +1,16 @@
 (function(scope, $) {
+    /**
+     * Internal/private helper method for doing 'assert's.
+     *
+     * @param val {boolean}
+     * @param msg {String}
+     */
     var assert = function(val, msg) {
         if (!val) {
-            throw new Error(msg ? msg : "Assertio Failed.");
+            throw new Error(msg ? msg : "Assertion Failed.");
         }
     };
+
 
     var MEGALIST_DEFAULTS = {
         /**
@@ -27,6 +34,11 @@
          */
         'itemRenderFunction': false,
 
+        /**
+         * Optional jQuery/CSS selector of an object to be used for appending. Must be a child of the container.
+         * Mainly used for hacking around table's markup and required DOM Tree where, the container would be marked as
+         * scrollable area, but the tbody would be used for appending the items.
+         */
         'appendTo': false,
 
         /**
@@ -35,7 +47,21 @@
         perfectScrollOptions: {},
     };
 
+    /**
+     * Helper variable, that create unique IDs by auto incrementing for every new MegaList that gets initialised.
+     *
+     * @type {number}
+     */
     var listId = 0;
+
+    /**
+     * MegaList provides everything needed for efficient rendering of thousands of DOM nodes in a scrollable
+     * (overflown) list or a grid.
+     *
+     * @param listContainer {String|jQuery|DOMNode} the container, which would be used to append list items
+     * @param options {Object} see MEGALIST_DEFAULTS for defaults and available options.
+     * @constructor
+     */
     var MegaList = function (listContainer, options) {
         assert(options.itemRenderFunction, 'itemRenderFunction was not provided.');
 
@@ -89,6 +115,12 @@
         return "megalist" + this.listId;
     };
 
+    /**
+     * Internal method that would be called when the MegaList renders to the DOM UI and is responsible for binding
+     * the DOM events.
+     *
+     * @private
+     */
     MegaList.prototype._bindEvents = function () {
         var self = this;
         $(window).bind("resize." + this._generateEventNamespace(), function() {
@@ -103,20 +135,39 @@
         });
     };
 
+    /**
+     * Called when .destroy is triggered. Should unbind any DOM events added by this MegaList instance.
+     *
+     * @private
+     */
     MegaList.prototype._unbindEvents = function () {
         $(window).unbind("resize." + this._generateEventNamespace());
         $(document).unbind('ps-scroll-y.ps' + this._generateEventNamespace());
     };
 
+    /**
+     * Add an item to the list.
+     *
+     * @param itemId {String}
+     */
     MegaList.prototype.add = function (itemId) {
         this.batchAdd([itemId]);
     };
 
+    /**
+     * Remove and item from the list.
+     *
+     * @param itemId {String}
+     */
     MegaList.prototype.remove = function (itemId) {
         this.batchRemove([itemId]);
     };
 
-    /* optimised adding of entries, less DOM updates */
+    /**
+     * Optimised adding of entries, less DOM updates
+     *
+     * @param itemIdsArray {Array} Array of item IDs (Strings)
+     */
     MegaList.prototype.batchAdd = function (itemIdsArray) {
         var self = this;
         itemIdsArray.forEach(function(itemId) {
@@ -129,7 +180,11 @@
         }
     };
 
-    /* optimised removing of entries, less DOM updates */
+    /**
+     * Optimised removing of entries, less DOM updates
+     *
+     * @param itemIdsArray {Array} Array of item IDs (Strings)
+     */
     MegaList.prototype.batchRemove = function (itemIdsArray) {
         var self = this;
         var requiresRerender = false;
@@ -158,38 +213,75 @@
         }
     };
 
+    /**
+     * Checks if an item exists in the list.
+     *
+     * @param itemId {String}
+     * @returns {boolean}
+     */
     MegaList.prototype.has = function (itemId) {
         return this.items.indexOf(itemId) > -1;
     };
 
+    /**
+     * Checks if an item is currently rendered.
+     *
+     * @param itemId {String}
+     * @returns {boolean}
+     */
     MegaList.prototype.isRendered = function (itemId) {
         return this._currentlyRendered[itemId] ? true : false;
     };
 
     /**
      * Should be called when the list container is resized.
-     * This method would be automatically called on window resize.
+     * This method would be automatically called on window resize, so no need to do that in the implementing code.
      */
     MegaList.prototype.resized = function () {
+        this._calculated = {};
+        this._contentUpdated(true);
+        this._applyDOMChanges();
+
+        // destroy PS if ALL items are visible
+        if (
+            this._calculated['visibleFirstItemNum'] === 0 &&
+            this._calculated['visibleLastItemNum'] === this.items.length &&
+            this._calculated['contentWidth'] <= this._calculated['scrollWidth'] &&
+            this._calculated['contentHeight'] <= this._calculated['scrollHeight']
+        ) {
+            if (this._scrollIsInitialized === true) {
+                this._scrollIsInitialized = false;
+                Ps.destroy(this.listContainer);
+            }
+        }
+        else {
+            // not all items are visible after a resize, should we init PS?
+            if (this._scrollIsInitialized === false) {
+                Ps.initialize(this.listContainer, this.options.perfectScrollOptions);
+                this._scrollIsInitialized = true;
+            }
+        }
         // all done, trigger a resize!
         $(this).trigger('resize');
     };
 
-    // MegaList.on/bind/rebind(
-    //     eventName {
-    //     "itemAdded",
-    //         "itemRemoved",
-    //         "reconfigured" (changedOptions incl old/new value),
-    //     "resize",
-    //         "userScroll",
-    //         "scroll"
-    // }
-    // );
 
+    /**
+     * Same as jQuery(megaListInstance).bind('eventName', cb);
+     *
+     * @param eventName {String}
+     * @param cb {Function}
+     */
     MegaList.prototype.bind = function (eventName, cb) {
         $(this).bind(eventName, cb);
     };
 
+    /**
+     * Same as jQuery(megaListInstance).unbind('eventName', cb) and then .bind('eventName', cb);
+     *
+     * @param eventName {String}
+     * @param cb {Function}
+     */
     MegaList.prototype.rebind = function (eventName, cb) {
         if (eventName.indexOf(".") === -1) {
             console.error("MegaList.rebind called with eventName that does not have a namespace, which is an" +
@@ -200,19 +292,39 @@
         $(this).bind(eventName, cb);
     };
 
+    /**
+     * Same as jQuery(megaListInstance).unbind('eventName', cb);
+     * @param eventName {String}
+     * @param cb {Function}
+     */
     MegaList.prototype.unbind = function (eventName, cb) {
         $(this).unbind(eventName, cb);
     };
 
+    /**
+     * Same as jQuery(megaListInstance).trigger(...);
+     */
     MegaList.prototype.trigger = function () {
         $(this).trigger.apply($(this), arguments);
     };
 
 
+    /**
+     * Force update the scrollable area.
+     */
     MegaList.prototype.scrollUpdate = function() {
-        Ps.update(this.listContainer);
+        if (this._scrollIsInitialized) {
+            Ps.update(this.listContainer);
+        }
     };
 
+    /**
+     * Scroll the scrollable area to a specific `posTop` or `posLeft`.
+     * Passing undefined to `posTop` can be used to only scroll the area via `posLeft`
+     *
+     * @param posTop {Number|undefined}
+     * @param posLeft {Number|undefined}
+     */
     MegaList.prototype.scrollTo = function(posTop, posLeft) {
         this._calculated = {};
 
@@ -227,54 +339,108 @@
         this._applyDOMChanges();
     };
 
+    /**
+     * Returns the current top position of the scrollable area
+     *
+     * @returns {number|*|Number|undefined}
+     */
     MegaList.prototype.getScrollTop = function() {
         return this.listContainer.scrollTop;
     };
 
+    /**
+     * Returns the current left position of the scrollable area
+     *
+     * @returns {Number}
+     */
     MegaList.prototype.getScrollLeft = function() {
         return this.listContainer.scrollLeft;
     };
 
+    /**
+     * Returns the scroll's height
+     *
+     * @returns {Number}
+     */
     MegaList.prototype.getScrollHeight = function() {
         this._recalculate();
         return this._calculated['scrollHeight'];
     };
 
+    /**
+     * Returns the scroll's width
+     *
+     * @returns {Number}
+     */
     MegaList.prototype.getScrollWidth = function() {
         this._recalculate();
         return this._calculated['scrollWidth'];
     };
 
+    /**
+     * Returns the total height of the list (incl. the overflown/not visible part).
+     *
+     * @returns {Number}
+     */
     MegaList.prototype.getContentHeight = function() {
         this._recalculate();
         return this._calculated['contentHeight'];
     };
 
+    /**
+     * Returns the total width of the list (incl. the overflown/not visible part).
+     * @returns {Number}
+     */
     MegaList.prototype.getContentWidth = function() {
         this._recalculate();
         return this._calculated['contentWidth'];
     };
 
+    /**
+     * Returns true if the scrollable area is scrolled to top.
+     *
+     * @returns {boolean}
+     */
     MegaList.prototype.isAtTop = function() {
         this._recalculate();
         return this._calculated['isAtTop'];
     };
 
+    /**
+     * Returns true if the scrollable area is scrolled to bottom.
+     *
+     * @returns {boolean}
+     */
     MegaList.prototype.isAtBottom = function() {
         this._recalculate();
         return this._calculated['isAtTop'];
     };
 
+    /**
+     * Returns a percent, representing the scroll position X.
+     *
+     * @returns {Number}
+     */
     MegaList.prototype.getScrolledPercentX = function() {
         this._recalculate();
         return this._calculated['scrolledPercentX'];
     };
 
+    /**
+     * Returns a percent, representing the scroll position Y.
+     *
+     * @returns {*}
+     */
     MegaList.prototype.getScrolledPercentY = function() {
         this._recalculate();
         return this._calculated['scrolledPercentY'];
     };
 
+    /**
+     * Scroll the Y axis of the list to `posPerc`
+     *
+     * @param posPerc {Number} A percent in the format of 0.0 - 1.0
+     */
     MegaList.prototype.scrollToPercentY = function(posPerc) {
         var targetPx = 100/this.getScrollHeight() * posPerc;
         if (this.listContainer.scrollTop !== targetPx) {
@@ -285,6 +451,12 @@
             this._isUserScroll = true;
         }
     };
+
+    /**
+     * Scroll to specific Y position.
+     *
+     * @param posY {Number}
+     */
     MegaList.prototype.scrollToY = function(posY) {
         if (this.listContainer.scrollTop !== posY) {
             this.listContainer.scrollTop = posY;
@@ -295,6 +467,13 @@
         }
     };
 
+    /**
+     * Scroll to specific DOM Node.
+     * Warning: The DOM Node should be a child of the listContainer, otherwise you may notice weird behaviour of this
+     * function.
+     *
+     * @param element {DOMNode}
+     */
     MegaList.prototype.scrollToDomElement = function(element) {
         this.listContainer.scrollTop = element.offsetTop;
         this._isUserScroll = false;
@@ -303,6 +482,12 @@
         this._isUserScroll = true;
     };
 
+    /**
+     * Scroll to specific `itemId`
+     *
+     * @param itemId {String}
+     * @returns {boolean} true if found, false if not found.
+     */
     MegaList.prototype.scrollToItem = function(itemId) {
         var elementIndex = this.items.indexOf(itemId);
         if (elementIndex === -1) {
@@ -318,7 +503,9 @@
         return true;
     };
 
-    /* used in case you want to destroy the MegaList instance and its created DOM nodes */
+    /**
+     * Used in case you want to destroy the MegaList instance and its created DOM nodes
+     */
     MegaList.prototype.destroy = function () {
 
         // destroy PS
@@ -330,7 +517,11 @@
     };
 
 
-    /* called to render the initial/required DOM elements */
+    /**
+     * Often you may want to initialise the MegaList, but not render it immediately (e.g. some items are still loading
+     * and waiting to be added to the MegaList). Thats why, this method should be called so that the initial rendering
+     * of the internal DOM nodes is done.
+     */
     MegaList.prototype.initialRender = function () {
         assert(this._wasRendered === false, 'This MegaList is already rendered');
 
@@ -349,6 +540,8 @@
         // init PS
         Ps.initialize(this.listContainer, this.options.perfectScrollOptions);
 
+        this._scrollIsInitialized = true;
+
         this._contentUpdated();
         this._applyDOMChanges();
 
@@ -361,6 +554,12 @@
     };
 
 
+    /**
+     * Internal method to clear precalculated values.
+     *
+     * @param name {String}
+     * @private
+     */
     MegaList.prototype._clearCalculated = function(name) {
         // TODO: write down all dependencies in an array and then calculate dependencies and clear them
         if (name === "scrollWidth") {
@@ -370,6 +569,11 @@
         delete this._calculated[name];
     };
 
+    /**
+     * Does recalculation of the internally precalculated values so that the DOM Re-paints are reduced to minimum,
+     * while the user is scrolling up/down.
+     * @private
+     */
     MegaList.prototype._recalculate = function() {
         var $listContainer = this.$listContainer;
         var listContainer = this.listContainer;
@@ -394,8 +598,11 @@
             }
         }
         if (!calculated['itemsPerRow']) {
-            calculated['itemsPerRow'] = Math.floor(
-                calculated['contentWidth'] / this.options.itemWidth
+            calculated['itemsPerRow'] = Math.max(
+                1,
+                Math.floor(
+                    calculated['contentWidth'] / this.options.itemWidth
+                )
             );
         }
         if (!calculated['contentHeight']) {
@@ -440,13 +647,18 @@
         }
     };
 
-    MegaList.prototype._contentUpdated = function() {
+    /**
+     * Internal method, that gets called when the MegaList's content gets updated (e.g. the internal list of item ids).
+     *
+     * @private
+     */
+    MegaList.prototype._contentUpdated = function(forced) {
         this._clearCalculated('contentWidth');
         this._clearCalculated('contentHeight');
         this._clearCalculated('visibleFirstItemNum');
         this._clearCalculated('visibleLastItemNum');
 
-        if (this._wasRendered) {
+        if (this._wasRendered || forced) {
             this._recalculate();
             this.$content.height(this._calculated['contentHeight']);
 
@@ -459,6 +671,11 @@
         }
     };
 
+    /**
+     * Internal method, that get called when DOM changes should be done (e.g. render new items since they got in/out
+     * of the viewport)
+     * @private
+     */
     MegaList.prototype._applyDOMChanges = function() {
         this._recalculate();
 
@@ -505,28 +722,48 @@
 
                 this._currentlyRendered[id] = renderedNode;
             }
+            else {
+                this._repositionRenderedItem(id);
+            }
         }
     };
 
+    MegaList.prototype._repositionRenderedItem = function(itemId) {
+        var self = this;
+        var node = self._currentlyRendered[itemId];
+        var itemPos = self.items.indexOf(itemId);
+
+        var css = {
+            'position': 'absolute',
+            'top': (self.options.itemHeight * Math.floor(itemPos/self._calculated['itemsPerRow']))
+        };
+
+        if (self._calculated['itemsPerRow'] > 1) {
+            css['left'] = (itemPos % self._calculated['itemsPerRow']) * self.options.itemWidth;
+        }
+        node.css(css);
+    };
+
+    /**
+     * Internal method that *ONLY* repositions items, in case a call to `_applyDOMChanges` is NOT needed, but the
+     * items in the list should be re-positioned.
+     * Basically, a lightweight version of `_applyDOMChanges` that does NOT adds or removes DOM nodes.
+     *
+     * @private
+     */
     MegaList.prototype._repositionRenderedItems = function() {
         var self = this;
         Object.keys(self._currentlyRendered).forEach(function(k) {
-            var node = self._currentlyRendered[k];
-            var itemId = node.data('id');
-            var itemPos = self.items.indexOf(itemId);
-
-            var css = {
-                'position': 'absolute',
-                'top': (self.options.itemHeight * Math.floor(itemPos/self._calculated['itemsPerRow']))
-            };
-
-            if (self._calculated['itemsPerRow'] > 1) {
-                css['left'] = (itemPos % self._calculated['itemsPerRow']) * self.options.itemWidth;
-            }
-            node.css(css);
+            self._repositionRenderedItem(k);
         });
     };
 
+    /**
+     * Internal method that gets called when the user scrolls.
+     *
+     * @param e {Event}
+     * @private
+     */
     MegaList.prototype._onScroll = function(e) {
         this._clearCalculated('scrollTop');
         this._clearCalculated('scrollLeft');

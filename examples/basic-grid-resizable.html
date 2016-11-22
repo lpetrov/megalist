@@ -35,12 +35,7 @@
                 itemWidth: 120,
                 itemHeight: 120,
                 itemRenderFunction: function(id) {
-                    return $(
-                            '<div class="item highlight-' + (id % 2) + '" data-id="' + id + '">' +
-                                'Item #' + (id + 1) + '' +
-                                '<button class="removeItem">remove</button>' +
-                            '</div>'
-                    );
+                    return $('<div class="item highlight-' + (id % 2) + '">Item #' + (id + 1)+ '</div>');
                 }
             });
 
@@ -50,47 +45,39 @@
 
             // example only: add some fake data
             var fixture = new FakeDataGenerator();
-            for(var i = 0; i<10000; i++) {
+            for(var i = 0; i<12; i++) {
                 var itemId = fixture.next();
                 megaList.add(itemId);
             }
 
+
             // render
             megaList.initialRender();
 
-            // add item functionality
-            $('#addItemButton').bind('click', function(e) {
-                var itemId = fixture.next();
-                megaList.add(itemId);
-            });
-
-            $('#addItemButton2').bind('click', function(e) {
-                var ids = [];
-                for(var i = 0; i< 1000; i++) {
-                    ids.push(fixture.next());
-                }
-                megaList.batchAdd(ids);
-            });
-
-            $('#removeLast').bind('click', function(e) {
-                var len = megaList.items.length;
-                megaList.batchRemove(
-                        megaList.items.slice(Math.max(0, len-1000), len)
+            // resizable controls
+            $('#width-apply').on('click', function() {
+                $('#exampleContainer').width(
+                        $('input[name="width"]').val()
                 );
+                megaList.resized();
             });
 
-            // remove item, using delegate (so that we can save on creating tons of anonymous functions/callbacks)
-            $('#exampleContainer').delegate('button.removeItem', 'click', function() {
-                var $renderedItemDomNode = $(this).parent();
-                megaList.remove($renderedItemDomNode.data('id'));
+            $('#height-apply').on('click', function() {
+                $('#exampleContainer').height(
+                        $('input[name="height"]').val()
+                );
+                megaList.resized();
             });
         });
     </script>
 </head>
 <body>
-    <button id="addItemButton">Add</button>
-    <button id="addItemButton2">Add 1000 items</button>
-    <button id="removeLast">Remove Last 1000 items</button>
+    <div>
+        Width: <input type="number" name="width" value="360" /> <button id="width-apply">apply</button>
+    </div>
+    <div>
+        Height: <input type="number" name="height" value="320" /> <button id="height-apply">apply</button>
+    </div>
     <div class="container" id="exampleContainer"></div>
 </body>
 </html>

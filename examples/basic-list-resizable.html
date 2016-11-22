@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MegaList - Dynamic List Example</title>
+    <title>MegaList - Basic List Example</title>
     <link href="../src/vendor/perfect-scrollbar/css/perfect-scrollbar.css" media="all" rel="stylesheet" />
 
     <script type="text/javascript" src="../src/vendor/perfect-scrollbar/js/perfect-scrollbar.js"></script>
@@ -27,29 +27,14 @@
     </style>
     <script type="text/javascript">
         $(document).ready(function() {
+
             // initialise
             var megaList = new MegaList($('#exampleContainer'), {
                 itemWidth: 320,
                 itemHeight: 90,
                 itemRenderFunction: function(id) {
-                    // lets add some random (not really visible...) DOM elements so that the document's DOM Tree
-                    // would get epicly big!
-                    var domFloodStr = '';
-                    for (var i = 0; i<20; i++) {
-                        domFloodStr += '<strong>&nbsp;</strong>';
-                    }
-                    var imageNum = id % 20;
-                    return $(
-                            '<div class="item highlight-' + (id % 2) + '" data-id="' + id + '">' +
-                                '<img align="left" src="https://unsplash.it/120/90?image=' + imageNum + '" />' +
-                                'Item #' + (id + 1) + '' +
-                                '<button class="removeItem">remove</button>' +
-                                domFloodStr +
-                            '</div>'
-                    );
-                },
-                perfectScrollbarOptions: {
-                    minScrollbarLength: 10
+                    console.debug("Requested from render function: ", id);
+                    return $('<div class="item highlight-' + (id % 2) + '">Item #' + (id + 1)+ '</div>');
                 }
             });
 
@@ -59,7 +44,7 @@
 
             // example only: add some fake data
             var fixture = new FakeDataGenerator();
-            for(var i = 0; i<1000; i++) {
+            for(var i = 0; i<100; i++) {
                 var itemId = fixture.next();
                 megaList.add(itemId);
             }
@@ -67,25 +52,21 @@
             // render
             megaList.initialRender();
 
-            // add item functionality
-            $('#addItemButton').bind('click', function(e) {
-                var itemId = fixture.next();
-                megaList.add(itemId);
+            // resizable controls
+            $('button').on('click', function() {
+                $('#exampleContainer').height(
+                        $('input').val()
+                );
+                megaList.resized();
             });
-
-            // remove item, using delegate (so that we can save on creating tons of anonymous functions/callbacks)
-            $('#exampleContainer').delegate('button.removeItem', 'click', function() {
-                var $renderedItemDomNode = $(this).parent();
-                megaList.remove($renderedItemDomNode.data('id'));
-            });
-
-
-
         });
     </script>
 </head>
 <body>
-    <button id="addItemButton">Add</button>
+    <div>
+        Height: <input type="number" name="height" value="320" /> <button>apply</button>
+    </div>
+
     <div class="container" id="exampleContainer"></div>
 </body>
 </html>
