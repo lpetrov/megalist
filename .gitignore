@@ -2,3 +2,4 @@ archive
 node_modules
 dist/*.js
 dist/css/*.css
+releases/*.zip
