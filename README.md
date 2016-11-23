@@ -4,7 +4,7 @@
 Check out the [examples](https://github.com/lpetrov/megalist/tree/master/examples) directory.
 
 ## Description
-MegaList is a very simple but powerful utility for rendering very large lists, without clutering the DOM with thousands
+MegaList is a very simple but powerful utility for rendering very large lists, without cluttering the DOM with thousands
 of DOM nodes.
 
 Every dynamic web app, sooner or later would end up rendering tons of stuff in the DOM Tree, which makes its traversal,
