@@ -42,9 +42,29 @@
         'appendTo': false,
 
         /**
+         * Optional feature to insert items before/after their previous nodes, instead of always appending them
+         * to the bottom of the container.
+         *
+         * Note: Can be overwritten by render adapters (e.g. Table)
+         */
+        'preserveOrderInDOM': false,
+
+        /**
+         * By default, the `MegaList.RENDER_ADAPTERS.PositionAbsolute` would be used.
+         */
+        'renderAdapter': false,
+
+        /**
          * Pass any PerfectScrollbar options here.
          */
         perfectScrollOptions: {},
+
+        /**
+         * Internal option, that would be used by the Table renderer which would force the prepend to always be after
+         * a specific (runtime defined) DOM element
+         * @private
+         */
+        '_alwaysPrependAfter': false,
     };
 
     /**
@@ -68,7 +88,9 @@
         this.listId = listId++;
 
         this.$listContainer = $(listContainer);
-        this.$listContainer.addClass("megaList");
+        this.$listContainer
+            .css({'position': 'relative'})
+            .addClass("megaList");
         this.listContainer = this.$listContainer[0];
 
         var items = options.items;
@@ -103,6 +125,16 @@
          * @private
          */
         this._currentlyRendered = {};
+
+
+        /**
+         * Init the render adapter
+         */
+        if (!this.options.renderAdapter) {
+            this.options.renderAdapter = new MegaList.RENDER_ADAPTERS.PositionAbsolute();
+        }
+        // pass a reference to MegaList, so that _calculated and other stuff can be used.
+        this.options.renderAdapter.setMegaList(this);
     };
 
     /**
@@ -543,6 +575,9 @@
         this._scrollIsInitialized = true;
 
         this._contentUpdated();
+        if (this.options.renderAdapter._willRender) {
+            this.options.renderAdapter._willRender();
+        }
         this._applyDOMChanges();
 
         this.scrollUpdate();
@@ -551,6 +586,10 @@
 
         // bind events
         this._bindEvents();
+
+        if (this.options.renderAdapter._rendered) {
+            this.options.renderAdapter._rendered();
+        }
     };
 
 
@@ -578,12 +617,19 @@
         var $listContainer = this.$listContainer;
         var listContainer = this.listContainer;
 
+        var itemWidth = this.options.itemWidth;
+
         var calculated = this._calculated;
 
         // TODO: move all those IFs to a getter that would only calculate the requested values, not all of them!
         if (!calculated['scrollWidth']) {
             calculated['scrollWidth'] = $listContainer.innerWidth();
         }
+
+        if (!itemWidth) {
+            itemWidth = calculated['scrollWidth']
+        };
+
         if (!calculated['scrollHeight']) {
             calculated['scrollHeight'] = $listContainer.innerHeight();
         }
@@ -593,15 +639,19 @@
                 calculated['contentWidth'] = contentWidth;
             }
             else {
-                // TODO: fixme
-                calculated['contentWidth'] = this.options.itemWidth;
+                if (this.options.itemWidth === false) {
+                    calculated['contentWidth'] = calculated['scrollWidth'];
+                }
+                else {
+                    calculated['contentWidth'] = this.options.itemWidth;
+                }
             }
         }
         if (!calculated['itemsPerRow']) {
             calculated['itemsPerRow'] = Math.max(
                 1,
                 Math.floor(
-                    calculated['contentWidth'] / this.options.itemWidth
+                    calculated['contentWidth'] / itemWidth
                 )
             );
         }
@@ -628,8 +678,8 @@
         }
         if (!calculated['itemsPerPage']) {
             calculated['itemsPerPage'] = Math.ceil(
-                calculated['scrollHeight'] / this.options.itemHeight
-            ) * calculated['itemsPerRow'];
+                    calculated['scrollHeight'] / this.options.itemHeight
+                ) * calculated['itemsPerRow'];
         }
         if (!calculated['visibleFirstItemNum']) {
             calculated['visibleFirstItemNum'] = Math.floor(
@@ -699,49 +749,71 @@
             }
         }
 
+        var itemWidth = this.options.itemWidth;
+        if (!itemWidth) {
+            itemWidth = this._calculated['scrollWidth'];
+        }
+
         // show items which are currently visible
         for(var i = first; i<last; i++) {
             var id = this.items[i];
             if (!this._currentlyRendered[id]) {
-                var renderedNode = this.options.itemRenderFunction(id);
-                var css = {
-                    'position': 'absolute',
-                    'top': (this.options.itemHeight * Math.floor(i/this._calculated['itemsPerRow']))
-                };
+                var renderedNode = $(this.options.itemRenderFunction(id));
 
-                if (this._calculated['itemsPerRow'] > 1) {
-                    css['left'] = (i % this._calculated['itemsPerRow']) * this.options.itemWidth;
+                if (this.options.renderAdapter._repositionRenderedItem) {
+                    this.options.renderAdapter._repositionRenderedItem(id, renderedNode);
                 }
 
-                renderedNode.css(css);
                 renderedNode.data('id', id);
 
-                this.$content.append(
-                    renderedNode
-                );
+                if (!this.options.preserveOrderInDOM) {
+                    this.$content.append(
+                        renderedNode
+                    );
+                }
+                else {
+                    if (i === 0) {
+                        if (this.options._alwaysPrependAfter) {
+                            renderedNode.insertAfter(this.options._alwaysPrependAfter);
+                        }
+                        else {
+                            this.$content.prepend(
+                                renderedNode
+                            );
+                        }
+                    }
+                    else {
+                        var previousNodeId = this.items[i - 1];
+                        if (this._currentlyRendered[previousNodeId]) {
+                            renderedNode.insertAfter(this._currentlyRendered[previousNodeId]);
+                        }
+                        else {
+                            if (this.options._alwaysPrependAfter) {
+                                renderedNode.insertAfter(this.options._alwaysPrependAfter);
+                            }
+                            else  {
+                                // no previous, render first
+                                this.$content.prepend(
+                                    renderedNode
+                                );
+                            }
+                        }
+                    }
+                }
 
                 this._currentlyRendered[id] = renderedNode;
             }
             else {
-                this._repositionRenderedItem(id);
+                if (this.options.renderAdapter._repositionRenderedItem) {
+                    this.options.renderAdapter._repositionRenderedItem(id);
+                }
             }
         }
-    };
 
-    MegaList.prototype._repositionRenderedItem = function(itemId) {
-        var self = this;
-        var node = self._currentlyRendered[itemId];
-        var itemPos = self.items.indexOf(itemId);
 
-        var css = {
-            'position': 'absolute',
-            'top': (self.options.itemHeight * Math.floor(itemPos/self._calculated['itemsPerRow']))
-        };
-
-        if (self._calculated['itemsPerRow'] > 1) {
-            css['left'] = (itemPos % self._calculated['itemsPerRow']) * self.options.itemWidth;
+        if (this.options.renderAdapter._itemsRepositioned) {
+            this.options.renderAdapter._itemsRepositioned();
         }
-        node.css(css);
     };
 
     /**
@@ -753,9 +825,15 @@
      */
     MegaList.prototype._repositionRenderedItems = function() {
         var self = this;
-        Object.keys(self._currentlyRendered).forEach(function(k) {
-            self._repositionRenderedItem(k);
-        });
+        if (self.options.renderAdapter._repositionRenderedItem) {
+            Object.keys(self._currentlyRendered).forEach(function (k) {
+                self.options.renderAdapter._repositionRenderedItem(k);
+            });
+        }
+
+        if (this.options.renderAdapter._itemsRepositioned) {
+            this.options.renderAdapter._itemsRepositioned();
+        }
     };
 
     /**
@@ -772,6 +850,91 @@
         this._applyDOMChanges();
     };
 
+
+
+    MegaList.RENDER_ADAPTERS = {};
+
+    MegaList.RENDER_ADAPTERS.PositionAbsolute = function(options) {
+        this.options = $.extend({}, MegaList.RENDER_ADAPTERS.PositionAbsolute.DEFAULTS, options);
+    };
+
+    MegaList.RENDER_ADAPTERS.PositionAbsolute.prototype.setMegaList = function(megaList) {
+        this.megaList = megaList;
+    };
+
+    MegaList.RENDER_ADAPTERS.PositionAbsolute.prototype._repositionRenderedItem = function(itemId, node) {
+        assert(this.megaList, 'megaList is not set.');
+
+        var self = this;
+        var megaList = this.megaList;
+        if (!node) {
+            node = megaList._currentlyRendered[itemId];
+        }
+        var itemPos = megaList.items.indexOf(itemId);
+
+        var css = {
+            'position': 'absolute',
+            'top': (megaList.options.itemHeight * Math.floor(itemPos/megaList._calculated['itemsPerRow']))
+        };
+
+        if (megaList._calculated['itemsPerRow'] > 1) {
+            css['left'] = (itemPos % megaList._calculated['itemsPerRow']) * megaList.options.itemWidth;
+        }
+        node.addClass('megaListItem');
+        node.css(css);
+    };
+
+    MegaList.RENDER_ADAPTERS.PositionAbsolute.DEFAULTS = {};
+
+
+    MegaList.RENDER_ADAPTERS.Table = function(options) {
+        this.options = $.extend({}, MegaList.RENDER_ADAPTERS.Table.DEFAULTS, options);
+    };
+
+    MegaList.RENDER_ADAPTERS.Table.prototype.setMegaList = function(megaList) {
+        this.megaList = megaList;
+        megaList.options.preserveOrderInDOM = true;
+    };
+    MegaList.RENDER_ADAPTERS.Table.prototype._willRender = function() {
+        var self = this;
+        var megaList = self.megaList;
+
+        self.$prePusher = $('<tr></tr>');
+        self.$postPusher = $('<tr></tr>');
+
+        megaList.$content.prepend(self.$prePusher);
+        megaList.$content.append(self.$postPusher);
+
+        megaList.options._alwaysPrependAfter = self.$prePusher;
+    };
+    MegaList.RENDER_ADAPTERS.Table.prototype._repositionRenderedItem = function(itemId, node) {
+        assert(this.megaList, 'megaList is not set.');
+
+        var self = this;
+        var megaList = this.megaList;
+        if (!node) {
+            node = megaList._currentlyRendered[itemId];
+        }
+        node.addClass('megaListItem');
+    };
+
+    MegaList.RENDER_ADAPTERS.Table.prototype._itemsRepositioned = function(x) {
+        assert(this.megaList, 'megaList is not set.');
+        assert(this.$prePusher, '$prePusher is not set, is the list rendered?');
+        assert(this.$postPusher, '$postPusher is not set, is the list rendered?');
+
+        var self = this;
+        var megaList = self.megaList;
+        var calculated = megaList._calculated;
+
+        var prepusherHeight = calculated['visibleFirstItemNum'] * megaList.options.itemHeight;
+        self.$prePusher.height(prepusherHeight);
+
+        var postpusherHeight = (megaList.items.length - calculated['visibleLastItemNum']) * megaList.options.itemHeight;
+        self.$postPusher.height(postpusherHeight);
+    };
+
+    MegaList.RENDER_ADAPTERS.Table.DEFAULTS = {};
 
     scope.MegaList = MegaList;
 })(window, jQuery);

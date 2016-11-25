@@ -13,20 +13,12 @@
     <style>
         #exampleContainer {
             position: relative;
-            width: 320px;
+            width: 100%;
             height: 320px;
             border: 1px solid red;
         }
-        .item {
-            width: 320px;
-            height: 24px;
-            text-align: center;
-        }
-        table {
-            width: 320px;
-        }
-        table td {
-            width: 30%;
+        .megaListItem, .megaListItem td {
+            height: 24px !important;
         }
         .container .highlight-0 {background: #CCC}
         .container .highlight-1 {background: #FFF}
@@ -35,23 +27,15 @@
         $(document).ready(function() {
             // initialise
             var megaList = new MegaList($('#exampleContainer'), {
-                itemWidth: 320,
+                itemWidth: false,
                 itemHeight: 24,
                 appendTo: 'table',
                 renderAdapter: new MegaList.RENDER_ADAPTERS.Table(),
                 itemRenderFunction: function(id) {
-                    // lets add some random (not really visible...) DOM elements so that the document's DOM Tree
-                    // would get epicly big!
-                    var domFloodStr = '';
-                    for (var i = 0; i<20; i++) {
-                        domFloodStr += '<strong>&nbsp;</strong>';
-                    }
-                    var imageNum = id % 20;
                     return $(
-                            '<tr class="item highlight-' + (id % 2) + '" data-id="' + id + '">' +
+                            '<tr class="highlight-' + (id % 2) + '" data-id="' + id + '">' +
                                 '<td>Item #' + (id + 1) + '</td>' +
-                                '<td><button class="removeItem">remove</button></td>' +
-                                '<td>' + domFloodStr + '</td>' +
+                                '<td width="100"><button class="removeItem">remove</button></td>' +
                             '</tr>'
                     );
                 },
@@ -95,7 +79,9 @@
 <body>
     <button id="addItemButton">Add</button>
     <div class="container" id="exampleContainer">
-        <table cellpadding="0" cellspacing="0"></table>
+        <table width="100%" cellpadding="0" cellspacing="0">
+            <tbody></tbody>
+        </table>
     </div>
 </body>
 </html>
