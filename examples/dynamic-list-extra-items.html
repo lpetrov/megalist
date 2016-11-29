@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MegaList - Basic Grid Example</title>
+    <title>MegaList - Dynamic List Example</title>
     <link href="../src/vendor/perfect-scrollbar/css/perfect-scrollbar.css" media="all" rel="stylesheet" />
 
     <script type="text/javascript" src="../src/vendor/perfect-scrollbar/js/perfect-scrollbar.js"></script>
@@ -13,17 +13,14 @@
     <style>
         #exampleContainer {
             position: relative;
-            width: 360px;
+            width: 320px;
             height: 320px;
             border: 1px solid red;
         }
         .item {
-            width: 120px;
-            height: 120px;
+            width: 320px;
+            height: 90px;
             text-align: center;
-            float: left;
-            display: inline-block;
-            vertical-align: middle;
         }
         .container .highlight-0 {background: #CCC}
         .container .highlight-1 {background: #FFF}
@@ -32,15 +29,28 @@
         $(document).ready(function() {
             // initialise
             var megaList = new MegaList($('#exampleContainer'), {
-                itemWidth: 120,
-                itemHeight: 120,
+                itemWidth: 320,
+                itemHeight: 90,
+                extraItems: 2,
                 itemRenderFunction: function(id) {
+                    // lets add some random (not really visible...) DOM elements so that the document's DOM Tree
+                    // would get epicly big!
+                    var domFloodStr = '';
+                    for (var i = 0; i<20; i++) {
+                        domFloodStr += '<strong>&nbsp;</strong>';
+                    }
+                    var imageNum = id % 20;
                     return $(
                             '<div class="item highlight-' + (id % 2) + '" data-id="' + id + '">' +
+                                '<img align="left" src="https://unsplash.it/120/90?image=' + imageNum + '" />' +
                                 'Item #' + (id + 1) + '' +
                                 '<button class="removeItem">remove</button>' +
+                                domFloodStr +
                             '</div>'
                     );
+                },
+                perfectScrollbarOptions: {
+                    minScrollbarLength: 10
                 }
             });
 
@@ -50,7 +60,7 @@
 
             // example only: add some fake data
             var fixture = new FakeDataGenerator();
-            for(var i = 0; i<1000; i++) {
+            for(var i = 0; i<100; i++) {
                 var itemId = fixture.next();
                 megaList.add(itemId);
             }
@@ -64,33 +74,19 @@
                 megaList.add(itemId);
             });
 
-            $('#addItemButton2').bind('click', function(e) {
-                var ids = [];
-                for(var i = 0; i< 1000; i++) {
-                    ids.push(fixture.next());
-                }
-                megaList.batchAdd(ids);
-            });
-
-            $('#removeLast').bind('click', function(e) {
-                var len = megaList.items.length;
-                megaList.batchRemove(
-                        megaList.items.slice(Math.max(0, len-1000), len)
-                );
-            });
-
             // remove item, using delegate (so that we can save on creating tons of anonymous functions/callbacks)
             $('#exampleContainer').delegate('button.removeItem', 'click', function() {
                 var $renderedItemDomNode = $(this).parent();
                 megaList.remove($renderedItemDomNode.data('id'));
             });
+
+
+
         });
     </script>
 </head>
 <body>
     <button id="addItemButton">Add</button>
-    <button id="addItemButton2">Add 1000 items</button>
-    <button id="removeLast">Remove Last 1000 items</button>
     <div class="container" id="exampleContainer"></div>
 </body>
 </html>

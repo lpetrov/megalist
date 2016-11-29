@@ -60,6 +60,13 @@
         perfectScrollOptions: {},
 
         /**
+         * Number of extra items to show (even that they would be out of the viewport and hidden).
+         * Note: MegaList would render number of `extraItems` before and also `extraItems` after the visible items,
+         * except for the cases where the end of the list is reached or the list's scroll position is at top.
+         */
+        extraItems: 0,
+
+        /**
          * Internal option, that would be used by the Table renderer which would force the prepend to always be after
          * a specific (runtime defined) DOM element
          * @private
@@ -539,13 +546,17 @@
      * Used in case you want to destroy the MegaList instance and its created DOM nodes
      */
     MegaList.prototype.destroy = function () {
-
         // destroy PS
         this._unbindEvents();
 
         this.items = [];
         this._wasRendered = false;
         Ps.destroy(this.listContainer);
+
+        if (!this.options.appendTo && this.$content) {
+            this.$content.remove();
+            this.$content = this.content = undefined;
+        }
     };
 
 
@@ -557,7 +568,6 @@
     MegaList.prototype.initialRender = function () {
         assert(this._wasRendered === false, 'This MegaList is already rendered');
 
-        this._wasRendered = true;
 
         if (!this.$content) {
             this.$content = $('<div class="megaList-content"></div>');
@@ -575,9 +585,12 @@
         this._scrollIsInitialized = true;
 
         this._contentUpdated();
+
         if (this.options.renderAdapter._willRender) {
             this.options.renderAdapter._willRender();
         }
+        this._wasRendered = true;
+
         this._applyDOMChanges();
 
         this.scrollUpdate();
@@ -685,6 +698,12 @@
             calculated['visibleFirstItemNum'] = Math.floor(
                 Math.floor(calculated['scrollTop'] / this.options.itemHeight) * calculated['itemsPerRow']
             );
+            if (calculated['visibleFirstItemNum'] > 0) {
+                calculated['visibleFirstItemNum'] = Math.max(
+                    0,
+                    calculated['visibleFirstItemNum'] - this.options.extraItems
+                );
+            }
         }
         if (!calculated['visibleLastItemNum']) {
             calculated['visibleLastItemNum'] = Math.min(
@@ -694,6 +713,13 @@
                     calculated['itemsPerRow'] + calculated['itemsPerPage']
                 )
             );
+
+            if (calculated['visibleLastItemNum'] < this.items.length) {
+                calculated['visibleLastItemNum'] = Math.min(
+                    this.items.length,
+                    calculated['visibleLastItemNum'] + this.options.extraItems
+                );
+            }
         }
     };
 
@@ -749,13 +775,8 @@
             }
         }
 
-        var itemWidth = this.options.itemWidth;
-        if (!itemWidth) {
-            itemWidth = this._calculated['scrollWidth'];
-        }
-
         // show items which are currently visible
-        for(var i = first; i<last; i++) {
+        for(var i = first; i < last; i++) {
             var id = this.items[i];
             if (!this._currentlyRendered[id]) {
                 var renderedNode = $(this.options.itemRenderFunction(id));
@@ -850,6 +871,68 @@
         this._applyDOMChanges();
     };
 
+    /**
+     * Not-so efficient method of maintaining item ids in sync with your data source, but helpful enough for
+     * quick prototypes or UIs which don't update their item lists too often.
+     * Would update the internally stored item ids, with the idsArray.
+     * Would take care of appending/prepending/positioning newly rendered elements in the UI properly with minimum DOM
+     * updates.
+     *
+     * @param idsArray
+     */
+    MegaList.prototype.syncItemsFromArray = function(idsArray) {
+        var self = this;
+        var r = array_diff(this.items, idsArray);
+
+        // IF initially the folder was empty, megaList may not had been rendered...so, lets check
+        var requiresRerender = false;
+
+        r.removed.forEach(function(itemId) {
+            var itemIndex = self.items.indexOf(itemId);
+            if (itemIndex > -1) {
+                if (self.isRendered(itemId)) {
+                    requiresRerender = true;
+                    self._currentlyRendered[itemId].remove();
+                    delete self._currentlyRendered[itemId];
+                    console.error("removed", itemId);
+
+                }
+                self.items.splice(itemIndex, 1);
+            }
+        });
+
+        r.added.forEach(function(itemId) {
+            var itemIndex = self.items.indexOf(itemId);
+            if (itemIndex === -1) {
+                // XX: Can be made more optimal, e.g. to only rerender if prev/next was updated
+                requiresRerender = true;
+
+                var targetIndex = idsArray.indexOf(itemId);
+
+                assert(targetIndex !== -1, 'targetIndex was -1, this should never happen.');
+
+                if (targetIndex === 0) {
+                    self.items.unshift(itemId);
+                }
+                else {
+                    self.items.splice(targetIndex, 0, itemId);
+                }
+            }
+        });
+
+        if (this._wasRendered) {
+            this._contentUpdated();
+        }
+        else {
+            this.initialRender();
+        }
+
+        if (requiresRerender) {
+            this._repositionRenderedItems();
+            this._applyDOMChanges();
+
+        }
+    };
 
 
     MegaList.RENDER_ADAPTERS = {};
@@ -882,6 +965,15 @@
         }
         node.addClass('megaListItem');
         node.css(css);
+    };
+
+    MegaList.RENDER_ADAPTERS.PositionAbsolute.prototype._rendered = function() {
+        var megaList = this.megaList;
+        assert(megaList.$content, 'megaList.$container is not ready.');
+        megaList.$content.height(
+            megaList._calculated['contentHeight']
+        );
+        Ps.update(this.megaList.$listContainer[0]);
     };
 
     MegaList.RENDER_ADAPTERS.PositionAbsolute.DEFAULTS = {};
