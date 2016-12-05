@@ -60,11 +60,11 @@
         perfectScrollOptions: {},
 
         /**
-         * Number of extra items to show (even that they would be out of the viewport and hidden).
-         * Note: MegaList would render number of `extraItems` before and also `extraItems` after the visible items,
+         * Number of extra rows to show (even that they would be out of the viewport and hidden).
+         * Note: MegaList would render number of `extraRows` before and also `extraRows` after the visible items,
          * except for the cases where the end of the list is reached or the list's scroll position is at top.
          */
-        extraItems: 0,
+        extraRows: 0,
 
         /**
          * Internal option, that would be used by the Table renderer which would force the prepend to always be after
@@ -323,8 +323,10 @@
      */
     MegaList.prototype.rebind = function (eventName, cb) {
         if (eventName.indexOf(".") === -1) {
-            console.error("MegaList.rebind called with eventName that does not have a namespace, which is an" +
-                "anti-pattern");
+            if (typeof console !== 'undefined' && console.error) {
+                console.error("MegaList.rebind called with eventName that does not have a namespace, which is an" +
+                    "anti-pattern");
+            }
             return;
         }
         $(this).unbind(eventName);
@@ -362,15 +364,15 @@
      * Passing undefined to `posTop` can be used to only scroll the area via `posLeft`
      *
      * @param posTop {Number|undefined}
-     * @param posLeft {Number|undefined}
+     * @param [posLeft] {Number|undefined}
      */
     MegaList.prototype.scrollTo = function(posTop, posLeft) {
         this._calculated = {};
 
-        if (posTop) {
+        if (typeof posTop !== 'undefined') {
             this.listContainer.scrollTop = posTop;
         }
-        if (posLeft) {
+        if (typeof posLeft !== 'undefined') {
             this.listContainer.scrollLeft = posLeft;
         }
         this.scrollUpdate();
@@ -481,7 +483,7 @@
      * @param posPerc {Number} A percent in the format of 0.0 - 1.0
      */
     MegaList.prototype.scrollToPercentY = function(posPerc) {
-        var targetPx = 100/this.getScrollHeight() * posPerc;
+        var targetPx = this.getContentHeight() * posPerc;
         if (this.listContainer.scrollTop !== targetPx) {
             this.listContainer.scrollTop = targetPx;
             this._isUserScroll = false;
@@ -514,11 +516,14 @@
      * @param element {DOMNode}
      */
     MegaList.prototype.scrollToDomElement = function(element) {
-        this.listContainer.scrollTop = element.offsetTop;
-        this._isUserScroll = false;
-        this.scrollUpdate();
-        this._onScroll();
-        this._isUserScroll = true;
+
+        if (!this._elementIsInViewport(element)) {
+            this.listContainer.scrollTop = $(element)[0].offsetTop;
+            this._isUserScroll = false;
+            this.scrollUpdate();
+            this._onScroll();
+            this._isUserScroll = true;
+        }
     };
 
     /**
@@ -533,13 +538,76 @@
             return false;
         }
 
-        this.listContainer.scrollTop = elementIndex * this.options.itemHeight;
-        this._isUserScroll = false;
-        this.scrollUpdate();
-        this._onScroll();
-        this._isUserScroll = true;
+        var shouldScroll = false;
+        var itemOffsetTop = Math.floor(elementIndex / this._calculated['itemsPerRow']) * this.options.itemHeight;
+        var itemOffsetTopPlusHeight = itemOffsetTop + this.options.itemHeight;
 
-        return true;
+        // check if the item is above the visible viewport
+        if (itemOffsetTop < this._calculated['scrollTop']) {
+            shouldScroll = true;
+        }
+        // check if the item is below the visible viewport
+        else if (itemOffsetTopPlusHeight > (this._calculated['scrollTop'] + this._calculated['scrollHeight'])) {
+            shouldScroll = true;
+        }
+
+        // have to scroll
+        if (shouldScroll) {
+            this.listContainer.scrollTop = itemOffsetTop;
+            this._isUserScroll = false;
+            this.scrollUpdate();
+            this._onScroll();
+            this._isUserScroll = true;
+
+            return true;
+        }
+        else {
+            return false;
+        }
+    };
+
+
+    /**
+     * Alias to .scrollTo(0, 0)
+     */
+    MegaList.prototype.scrollToTop = function() {
+        this.scrollTo(0, 0);
+    };
+
+    /**
+     * Alias to .scrollToPercentY(1)
+     */
+    MegaList.prototype.scrollToBottom = function() {
+        this.scrollToPercentY(1);
+    };
+
+
+    /**
+     * Alias to .scrollTo(0, 0)
+     */
+    MegaList.prototype.scrollPageUp = function() {
+        var top = this._calculated['scrollTop'];
+        top -= this._calculated['scrollHeight'];
+        if (top >= 0) {
+            this.scrollTo(top);
+        }
+        else {
+            this.scrollTo(0);
+        }
+    };
+
+    /**
+     * Alias to .scrollToPercentY(1)
+     */
+    MegaList.prototype.scrollPageDown = function() {
+        var top = this._calculated['scrollTop'];
+        top += this._calculated['scrollHeight'];
+        if (top <= this._calculated['contentHeight'] - this._calculated['scrollHeight']) {
+            this.scrollTo(top);
+        }
+        else {
+            this.scrollTo(this._calculated['contentHeight'] - this._calculated['scrollHeight']);
+        }
     };
 
     /**
@@ -701,7 +769,7 @@
             if (calculated['visibleFirstItemNum'] > 0) {
                 calculated['visibleFirstItemNum'] = Math.max(
                     0,
-                    calculated['visibleFirstItemNum'] - this.options.extraItems
+                    calculated['visibleFirstItemNum'] - (this.options.extraRows * calculated['itemsPerRow'])
                 );
             }
         }
@@ -717,7 +785,7 @@
             if (calculated['visibleLastItemNum'] < this.items.length) {
                 calculated['visibleLastItemNum'] = Math.min(
                     this.items.length,
-                    calculated['visibleLastItemNum'] + this.options.extraItems
+                    calculated['visibleLastItemNum'] + (this.options.extraRows * calculated['itemsPerRow'])
                 );
             }
         }
@@ -835,6 +903,14 @@
         if (this.options.renderAdapter._itemsRepositioned) {
             this.options.renderAdapter._itemsRepositioned();
         }
+
+        this._isUserScroll = false;
+        this.scrollUpdate();
+        this._isUserScroll = true;
+
+        if (this.options.onContentUpdated) {
+            this.options.onContentUpdated();
+        }
     };
 
     /**
@@ -894,8 +970,6 @@
                     requiresRerender = true;
                     self._currentlyRendered[itemId].remove();
                     delete self._currentlyRendered[itemId];
-                    console.error("removed", itemId);
-
                 }
                 self.items.splice(itemIndex, 1);
             }
@@ -932,6 +1006,33 @@
             this._applyDOMChanges();
 
         }
+    };
+
+    /**
+     * Basic util method to check if an element is in the visible viewport
+     *
+     * @param el {DOMNode|jQuery}
+     * @returns {boolean}
+     * @private
+     */
+    MegaList.prototype._elementIsInViewport = function isElementInViewport (el) {
+
+        // refactored from:
+        // http://stackoverflow.com/questions/123999/how-to-tell-if-a-dom-element-is-visible-in-the-current-viewport/
+
+        if (typeof jQuery === "function" && el instanceof jQuery) {
+            el = el[0];
+        }
+
+        var rect     = el.getBoundingClientRect(),
+            vWidth   = window.innerWidth || doc.documentElement.clientWidth,
+            vHeight  = window.innerHeight || doc.documentElement.clientHeight,
+            efp      = function (x, y) { return document.elementFromPoint(x, y) };
+
+        return rect.bottom > 0 &&
+            rect.right > 0 &&
+            rect.left < (window.innerWidth || document.documentElement.clientWidth) /* or $(window).width() */ &&
+            rect.top < (window.innerHeight || document.documentElement.clientHeight) /* or $(window).height() */;
     };
 
 
@@ -1024,6 +1125,15 @@
 
         var postpusherHeight = (megaList.items.length - calculated['visibleLastItemNum']) * megaList.options.itemHeight;
         self.$postPusher.height(postpusherHeight);
+    };
+
+    MegaList.RENDER_ADAPTERS.Table.prototype._rendered = function() {
+        var megaList = this.megaList;
+        assert(megaList.$content, 'megaList.$container is not ready.');
+        megaList.$content.height(
+            megaList._calculated['contentHeight']
+        );
+        Ps.update(this.megaList.$listContainer[0]);
     };
 
     MegaList.RENDER_ADAPTERS.Table.DEFAULTS = {};
