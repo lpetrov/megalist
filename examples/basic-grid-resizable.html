@@ -35,7 +35,7 @@
                 itemWidth: 120,
                 itemHeight: 120,
                 itemRenderFunction: function(id) {
-                    return $('<div class="item highlight-' + (id % 2) + '">Item #' + (id + 1)+ '</div>');
+                    return $('<div class="item highlight-' + (id % 2) + '">Item #' + (id + 1)+ '</div>')[0];
                 }
             });
 

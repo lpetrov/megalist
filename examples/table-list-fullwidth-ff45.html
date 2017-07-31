@@ -11,10 +11,14 @@
     <script type="text/javascript" src="./fixture.js"></script>
 
     <style>
+        body {
+            margin:0;
+            padding: 0;
+        }
         #exampleContainer {
             position: relative;
-            width: 100%;
-            height: 320px;
+            width: 98%;
+            height: auto;
             border: 1px solid red;
         }
         .megaListItem, .megaListItem td {
@@ -25,6 +29,8 @@
     </style>
     <script type="text/javascript">
         $(document).ready(function() {
+            $('#exampleContainer').height($(window).outerHeight() - $('#addItemButton').outerHeight() - 10);
+
             // initialise
             var megaList = new MegaList($('#exampleContainer'), {
                 itemWidth: false,
@@ -32,12 +38,18 @@
                 appendTo: 'table',
                 renderAdapter: new MegaList.RENDER_ADAPTERS.Table(),
                 itemRenderFunction: function(id) {
+                    var imageNum = id % 20;
+
                     return $(
                             '<tr class="highlight-' + (id % 2) + '" data-id="' + id + '">' +
+                                '<td width="20"><img width=32 height=32 align="left" src="https://unsplash.it/120/90?image=' + imageNum + '" /></td>' +
                                 '<td>Item #' + (id + 1) + '</td>' +
+                                '<td>Item #' + (id + 1) + ' col2</td>' +
+                                '<td>Item #' + (id + 1) + ' col3</td>' +
+                                '<td>Item #' + (id + 1) + ' col4</td>' +
                                 '<td width="100"><button class="removeItem">remove</button></td>' +
                             '</tr>'
-                    );
+                    )[0];
                 },
                 perfectScrollbarOptions: {
                     minScrollbarLength: 10
