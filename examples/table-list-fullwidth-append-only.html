@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MegaList - Table List (Full width, Append Only) Example</title>
+    <link href="../src/vendor/perfect-scrollbar/css/perfect-scrollbar.css" media="all" rel="stylesheet" />
+
+    <script type="text/javascript" src="../src/vendor/perfect-scrollbar/js/perfect-scrollbar.js"></script>
+    <script type="text/javascript" src="../src/vendor/jquery-2.2.4.js"></script>
+    <script type="text/javascript" src="../src/megalist.js"></script>
+    <script type="text/javascript" src="./fixture.js"></script>
+
+    <style>
+        body {
+            margin:0;
+            padding: 0;
+        }
+        #exampleContainer {
+            position: relative;
+            width: 98%;
+            height: auto;
+            border: 1px solid red;
+        }
+        .megaListItem, .megaListItem td {
+            height: 24px !important;
+        }
+        .container .highlight-0 {background: #CCC}
+        .container .highlight-1 {background: #FFF}
+    </style>
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $('#exampleContainer').height($(window).outerHeight() - $('#addItemButton').outerHeight() - 10);
+
+            // initialise
+            var megaList = new MegaList($('#exampleContainer'), {
+                itemWidth: false,
+                itemHeight: 24,
+                appendTo: 'table',
+                appendOnly: true,
+                batchPages: 1,
+                renderAdapter: new MegaList.RENDER_ADAPTERS.Table(),
+                itemRenderFunction: function(id) {
+                    var imageNum = id % 20;
+
+                    return $(
+                            '<tr class="highlight-' + (id % 2) + '" data-id="' + id + '">' +
+                                '<td width="20"><img width=32 height=32 align="left" src="https://unsplash.it/120/90?image=' + imageNum + '" /></td>' +
+                                '<td>Item #' + (id + 1) + '</td>' +
+                                '<td>Item #' + (id + 1) + ' col2</td>' +
+                                '<td>Item #' + (id + 1) + ' col3</td>' +
+                                '<td>Item #' + (id + 1) + ' col4</td>' +
+                                '<td width="100"><button class="removeItem">remove</button></td>' +
+                            '</tr>'
+                    )[0];
+                },
+                perfectScrollbarOptions: {
+                    minScrollbarLength: 10
+                }
+            });
+
+
+            // example only: expose the megaList object in the console, so that users can play with it in their
+            // console
+            window.megaList = megaList;
+
+            // example only: add some fake data
+            var fixture = new FakeDataGenerator();
+            for(var i = 0; i<1000; i++) {
+                var itemId = fixture.next();
+                megaList.add(itemId);
+            }
+
+            // render
+            megaList.initialRender();
+
+            // add item functionality
+            $('#addItemButton').bind('click', function(e) {
+                var itemId = fixture.next();
+                megaList.add(itemId);
+            });
+
+            // remove item, using delegate (so that we can save on creating tons of anonymous functions/callbacks)
+            $('#exampleContainer').delegate('button.removeItem', 'click', function() {
+                var $renderedItemDomNode = $(this).parent().parent();
+                megaList.remove($renderedItemDomNode.data('id'));
+            });
+
+
+
+        });
+    </script>
+</head>
+<body>
+    <button id="addItemButton">Add</button>
+    <div class="container" id="exampleContainer">
+        <table width="100%" cellpadding="0" cellspacing="0">
+            <tbody></tbody>
+        </table>
+    </div>
+</body>
+</html>

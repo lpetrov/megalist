@@ -1,4 +1,4 @@
-Fixtures = window.Fixtures || {};
+var Fixtures = window.Fixtures || {};
 Fixtures.DOM = window.Fixtures.DOM || {};
 
 Fixtures.randomItemIds = function(megaList, totalNumberOfItemIds) {
@@ -7,12 +7,13 @@ Fixtures.randomItemIds = function(megaList, totalNumberOfItemIds) {
         megaList = false;
     }
     var r = [];
-    for(var i = 0; i < totalNumberOfItemIds; i++) {
-        r.push(i+1);
-    };
+    for (var i = 0; i < totalNumberOfItemIds; i++) {
+        r.push(i + 1);
+    }
 
     if (megaList && megaList.batchAdd) {
         megaList.batchAdd(r);
+        return r;
     }
     else {
         return r;
@@ -25,9 +26,9 @@ Fixtures.DOM.basicContainer = function() {
         'position': 'relative'
     });
 
-    return $container;
+    return $container[0];
 };
 
 Fixtures.DOM.itemDOMNodeGeneratorCallback = function(id) {
-    return $('<div class="item" data-id="' + id + '">Item #' + id + '</div>');
+    return $('<div class="item" data-id="' + id + '">Item #' + id + '</div>')[0];
 };

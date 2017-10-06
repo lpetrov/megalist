@@ -1,4 +1,7 @@
 (function(scope, $) {
+    var isFirefox = navigator.userAgent.indexOf("Firefox") > -1;
+    var isIE = navigator.userAgent.indexOf('Edge/') > -1 || navigator.userAgent.indexOf('Trident/') > -1;
+
     /**
      * Internal/private helper method for doing 'assert's.
      *
@@ -24,7 +27,10 @@
      * @param node
      */
     DOMUtils.removeNode = function(node) {
-        node.parentNode.removeChild(node);
+        if (node.parentNode) {
+            node.parentNode.removeChild(node);
+        }
+        // else - parentNode is already removed.
     };
 
     /**
@@ -38,12 +44,12 @@
         var parent = targetElement.parentNode;
 
         // if the parents lastchild is the targetElement...
-        if (parent.lastChild == targetElement) {
+        if (parent.lastElementChild == targetElement) {
             // add the newElement after the target element.
             parent.appendChild(newElement);
         } else {
             // else the target has siblings, insert the new element between the target and it's next sibling.
-            parent.insertBefore(newElement, targetElement.nextSibling);
+            parent.insertBefore(newElement, targetElement.nextElementSibling);
         }
     };
 
@@ -60,11 +66,11 @@
             targetElement.prepend(newElement)
         }
         else {
-            if (targetElement.firstChild) {
-                targetElement.insertBefore(newElement, targetElement.firstChild);
+            if (targetElement.firstElementChild) {
+                targetElement.insertBefore(newElement, targetElement.firstElementChild);
             }
             else {
-                targetElement.append(newElement);
+                targetElement.appendChild(newElement);
             }
         }
     };
@@ -95,11 +101,25 @@
         'itemRenderFunction': false,
 
         /**
+         * An optional callback function that would be called when a DOM update is needed (triggered) on an item, which
+         * is in the viewport.
+         */
+        'itemUpdatedFunction': false,
+
+        /**
          * Optional jQuery/CSS selector of an object to be used for appending. Must be a child of the container.
          * Mainly used for hacking around table's markup and required DOM Tree where, the container would be marked as
          * scrollable area, but the tbody would be used for appending the items.
          */
         'appendTo': false,
+
+        /**
+         * If set to `true` MegaList would dynamically append, but never remove any nodes.
+         * This is useful for browsers which have issues doing DOM ops and mess up the actual overall user experience
+         * in sites using the MegaList for showing stuff, that later on would be cleared when the user changes the page
+         * (e.g. file managers, when the user goes to a different folder, the DOM is cleared out).
+         */
+        'appendOnly': false,
 
         /**
          * Optional feature to insert items before/after their previous nodes, instead of always appending them
@@ -207,6 +227,14 @@
          */
         this._currentlyRendered = {};
 
+        /**
+         * A map of nodes, which were locally (in memory) cached, but got updated while being out of the viewport,
+         * so next time before we render them, we may need to update them.
+         *
+         * @type {{}}
+         * @private
+         */
+        this._queuedUpdates = {};
 
         /**
          * Init the render adapter
@@ -228,6 +256,48 @@
         return "megalist" + this.listId;
     };
 
+
+    MegaList.prototype._actualOnScrollCode = function(e) {
+        var self = this;
+        if (self.options.enableUserScrollEvent) {
+            self.trigger('onUserScroll', e);
+        }
+        self._onScroll(e);
+    };
+
+    MegaList.prototype.throttledOnScroll = function(e) {
+        var wait = isFirefox ? 30 : 5;
+        var self = this;
+        if (!self._lastThrottledOnScroll) {
+            self._lastThrottledOnScroll = Date.now();
+        }
+
+        if ((self._lastThrottledOnScroll + wait - Date.now()) < 0) {
+            if (
+                self._lastScrollPosY !== e.target.scrollTop &&
+                self._isUserScroll === true &&
+                self.listContainer === e.target
+            ) {
+                self._lastScrollPosY = e.target.scrollTop;
+
+                if (isFirefox) {
+                    if (self._lastOnScrollTimer) {
+                        clearTimeout(self._lastOnScrollTimer);
+                    }
+
+                    self._lastOnScrollTimer = setTimeout(function() {
+                        self._actualOnScrollCode(e);
+                    }, 0);
+                }
+                else {
+                    self._actualOnScrollCode(e);
+                }
+
+            }
+            self._lastThrottledOnScroll = Date.now();
+        }
+    };
+
     /**
      * Internal method that would be called when the MegaList renders to the DOM UI and is responsible for binding
      * the DOM events.
@@ -240,19 +310,7 @@
             self.resized();
         });
 
-        $(document).bind('ps-scroll-y.ps' + this._generateEventNamespace(), function(e) {
-            if (
-                self._lastScrollPosY !== e.target.scrollTop &&
-                self._isUserScroll === true &&
-                self.listContainer === e.target
-            ) {
-                self._lastScrollPosY = e.target.scrollTop;
-                if (self.options.enableUserScrollEvent) {
-                    self.trigger('onUserScroll', e);
-                }
-                self._onScroll(e);
-            }
-        });
+        $(document).bind('ps-scroll-y.ps' + this._generateEventNamespace(), self.throttledOnScroll.bind(self));
     };
 
     /**
@@ -313,7 +371,7 @@
         itemIdsArray.forEach(function(itemId) {
             var itemIndex = self.items.indexOf(itemId);
             if (itemIndex > -1) {
-                if (self.isRendered(itemId)) {
+                if (self.isRendered(itemId) && self.options.appendOnly !== true) {
                     requiresRerender = true;
                     DOMUtils.removeNode(self._currentlyRendered[itemId]);
                     delete self._currentlyRendered[itemId];
@@ -432,7 +490,10 @@
      * Same as jQuery(megaListInstance).trigger(...);
      */
     MegaList.prototype.trigger = function () {
-        $(this).trigger.apply($(this), arguments);
+        if (!this.$megaList) {
+            this.$megaList = $(this);
+        }
+        this.$megaList.trigger.apply(this.$megaList, arguments);
     };
 
 
@@ -851,15 +912,20 @@
                 ) * calculated['itemsPerRow'];
         }
         if (!calculated['visibleFirstItemNum']) {
-            calculated['visibleFirstItemNum'] = Math.floor(
-                Math.floor(calculated['scrollTop'] / this.options.itemHeight) * calculated['itemsPerRow']
-            );
-
-            if (calculated['visibleFirstItemNum'] > 0) {
-                calculated['visibleFirstItemNum'] = Math.max(
-                    0,
-                    calculated['visibleFirstItemNum'] - (this.options.extraRows * calculated['itemsPerRow'])
+            if (this.options.appendOnly !== true) {
+                calculated['visibleFirstItemNum'] = Math.floor(
+                    Math.floor(calculated['scrollTop'] / this.options.itemHeight) * calculated['itemsPerRow']
                 );
+
+                if (calculated['visibleFirstItemNum'] > 0) {
+                    calculated['visibleFirstItemNum'] = Math.max(
+                        0,
+                        calculated['visibleFirstItemNum'] - (this.options.extraRows * calculated['itemsPerRow'])
+                    );
+                }
+            }
+            else {
+                calculated['visibleFirstItemNum'] = 0;
             }
         }
 
@@ -891,13 +957,13 @@
             var visibleF = calculated['visibleFirstItemNum'];
             calculated['visibleFirstItemNum'] = Math.max(
                 0,
-                visibleF - (Math.min(visibleF % perPage, 1)) - Math.max(visibleF % perPage, 1) * perPage
+                ((((visibleF - visibleF % perPage) / perPage) - 1) - this.options.batchPages) * perPage
             );
 
             var visibleL = calculated['visibleLastItemNum'];
             calculated['visibleLastItemNum'] = Math.min(
                 this.items.length,
-                visibleL - (Math.min(visibleL % perPage, 1)) + Math.min(visibleL % perPage, 1) * perPage
+                ((((visibleL - visibleL % perPage) / perPage) + 1) + this.options.batchPages) * perPage
             );
         }
     };
@@ -919,7 +985,12 @@
         if (this._wasRendered || forced) {
             this._recalculate();
             if (oldContentHeight != this._calculated['contentHeight']) {
-                this.content.style.height = this._calculated['contentHeight'] + "px";
+                if (this.content.tagName === "TBODY" && isIE) {
+                    this.content.parentNode.style.height = this._calculated['contentHeight'] + "px";
+                }
+                else {
+                    this.content.style.height = this._calculated['contentHeight'] + "px";
+                }
             }
 
             // scrolled out of the viewport if the last item in the list was removed? scroll back a little bit...
@@ -939,39 +1010,35 @@
     MegaList.prototype._applyDOMChanges = function() {
         this._recalculate();
 
-        // prevent DOM updates and repaints by "detaching" the content DOM node
-        // var parentNode = this.content.parentNode;
-        // parentNode.removeChild(this.content);
 
-        // console.error("applyDOM", this.items.length);
+        var contentWasUpdated = false;
 
-        console.time('s1');
         var first = this._calculated['visibleFirstItemNum'];
         var last = this._calculated['visibleLastItemNum'];
 
         // remove items before the first visible item
-        for(var i = 0; i<first; i++) {
-            var id = this.items[i];
-            if (this._currentlyRendered[id]) {
-                DOMUtils.removeNode(this._currentlyRendered[id]);
-                delete this._currentlyRendered[id];
+        if (this.options.appendOnly !== true) {
+            for (var i = 0; i < first; i++) {
+                var id = this.items[i];
+                if (this._currentlyRendered[id]) {
+                    contentWasUpdated = true;
+                    DOMUtils.removeNode(this._currentlyRendered[id]);
+                    delete this._currentlyRendered[id];
+                }
+            }
+
+
+            // remove items after the last visible item
+            for (var i = last; i < this.items.length; i++) {
+                var id = this.items[i];
+                if (this._currentlyRendered[id]) {
+                    contentWasUpdated = true;
+                    DOMUtils.removeNode(this._currentlyRendered[id]);
+                    delete this._currentlyRendered[id];
+                }
             }
         }
 
-        console.timeEnd('s1');
-
-        console.time('s2');
-        // remove items after the last visible item
-        for(var i = last; i<this.items.length; i++) {
-            var id = this.items[i];
-            if (this._currentlyRendered[id]) {
-                DOMUtils.removeNode(this._currentlyRendered[id]);
-                delete this._currentlyRendered[id];
-            }
-        }
-        console.timeEnd('s2');
-
-        console.time('s3');
         var prependQueue = [];
         var appendQueue = [];
 
@@ -979,6 +1046,8 @@
         for(var i = first; i < last; i++) {
             var id = this.items[i];
             if (!this._currentlyRendered[id]) {
+                contentWasUpdated = true;
+
                 var renderedNode = this.options.itemRenderFunction(id);
 
                 if (this.options.renderAdapter._repositionRenderedItem) {
@@ -1007,11 +1076,10 @@
                             if (this.options._alwaysPrependAfter) {
                                 DOMUtils.appendAfter(renderedNode, this.options._alwaysPrependAfter);
                             }
-                            else  {
+                            else {
                                 // no previous, render first
                                 // DOMUtils.prepend(renderedNode, this.content);
-
-                                prependQueue.push(renderedNode);
+                                appendQueue.push(renderedNode);
                             }
                         }
                     }
@@ -1033,37 +1101,28 @@
                 this.content.appendChild(appendFragment);
             }
             else {
+                if (this._queuedUpdates[id] && this.options.itemUpdatedFunction) {
+                    this.options.itemUpdatedFunction(id, this._currentlyRendered[id]);
+                }
                 if (this.options.renderAdapter._repositionRenderedItem) {
                     this.options.renderAdapter._repositionRenderedItem(id);
                 }
             }
         }
 
+        if (contentWasUpdated === true) {
+            if (this.options.renderAdapter._itemsRepositioned) {
+                this.options.renderAdapter._itemsRepositioned();
+            }
 
-        console.timeEnd('s3');
+            this._isUserScroll = false;
+            this.scrollUpdate();
+            this._isUserScroll = true;
 
-        console.time('s4');
-        if (this.options.renderAdapter._itemsRepositioned) {
-            this.options.renderAdapter._itemsRepositioned();
+            if (this.options.onContentUpdated) {
+                this.options.onContentUpdated();
+            }
         }
-        console.timeEnd('s4');
-
-        console.time('s4.1');
-        // parentNode.appendChild(this.content);
-
-        console.timeEnd('s4.1');
-        console.time('s5');
-        this._isUserScroll = false;
-        this.scrollUpdate();
-        this._isUserScroll = true;
-
-        console.timeEnd('s5');
-
-        console.time('s6');
-        if (this.options.onContentUpdated) {
-            this.options.onContentUpdated();
-        }
-        console.timeEnd('s6');
     };
 
     /**
@@ -1111,22 +1170,24 @@
      */
     MegaList.prototype.syncItemsFromArray = function(idsArray) {
         var self = this;
-        var r = array_diff(this.items, idsArray);
+        var r = array.diff(this.items, idsArray);
 
         // IF initially the folder was empty, megaList may not had been rendered...so, lets check
         var requiresRerender = false;
 
-        r.removed.forEach(function(itemId) {
-            var itemIndex = self.items.indexOf(itemId);
-            if (itemIndex > -1) {
-                if (self.isRendered(itemId)) {
-                    requiresRerender = true;
-                    DOMUtils.removeNode(self._currentlyRendered[itemId]);
-                    delete self._currentlyRendered[itemId];
+        if (self.options.appendOnly !== true) {
+            r.removed.forEach(function (itemId) {
+                var itemIndex = self.items.indexOf(itemId);
+                if (itemIndex > -1) {
+                    if (self.isRendered(itemId)) {
+                        requiresRerender = true;
+                        DOMUtils.removeNode(self._currentlyRendered[itemId]);
+                        delete self._currentlyRendered[itemId];
+                    }
+                    self.items.splice(itemIndex, 1);
                 }
-                self.items.splice(itemIndex, 1);
-            }
-        });
+            });
+        }
 
         r.added.forEach(function(itemId) {
             var itemIndex = self.items.indexOf(itemId);
@@ -1215,6 +1276,26 @@
     };
 
     /**
+     * To be used together with 'MegaList.options.itemUpdatedFunction'.
+     * E.g. this function must be called by the code which manages the actual data (e.g. items), IF a property of a
+     * specific item, that requires re-rendering/DOM update, is being changed - the integrating code calls this
+     * and MegaList, IF needed (e.g. node is in the viewport/visible) would call `itemUpdatedFunction`
+     *
+     * @param {String} itemId
+     */
+    MegaList.prototype.itemUpdated = function(itemId) {
+        assert(this.options.itemUpdatedFunction, 'MegaList.options.itemUpdatedFunction(itemId) is required before ' +
+            'calling MegaList.itemUpdate(itemId)');
+
+        if (this._currentlyRendered[itemId]) {
+            this.options.itemUpdatedFunction(itemId, this._currentlyRendered[itemId]);
+        }
+        else {
+            this._queuedUpdates[itemId] = true;
+        }
+    };
+
+    /**
      * Basic util method to check if an element is in the visible viewport
      *
      * @param el {DOMNode|jQuery}
@@ -1264,12 +1345,13 @@
 
         var css = {
             'position': 'absolute',
-            'top': (megaList.options.itemHeight * Math.floor(itemPos/megaList._calculated['itemsPerRow'])) + "px"
+            'top': (megaList.options.itemHeight * Math.floor(itemPos / megaList._calculated['itemsPerRow'])) + "px"
         };
 
         if (megaList._calculated['itemsPerRow'] > 1) {
             css['left'] = ((itemPos % megaList._calculated['itemsPerRow']) * megaList.options.itemWidth) + "px";
         }
+
         node.classList.add('megaListItem');
 
         Object.keys(css).forEach(function(prop, i) {
@@ -1330,8 +1412,10 @@
         var megaList = self.megaList;
         var calculated = megaList._calculated;
 
-        var prepusherHeight = calculated['visibleFirstItemNum'] * megaList.options.itemHeight;
-        self.prePusherDOMNode.style.height = prepusherHeight + "px";
+        if (this.megaList.options.appendOnly !== true) {
+            var prepusherHeight = calculated['visibleFirstItemNum'] * megaList.options.itemHeight;
+            self.prePusherDOMNode.style.height = prepusherHeight + "px";
+        }
 
         var postpusherHeight = (megaList.items.length - calculated['visibleLastItemNum']) * megaList.options.itemHeight;
         self.postPusherDOMNode.style.height = postpusherHeight + "px";
@@ -1340,8 +1424,15 @@
     MegaList.RENDER_ADAPTERS.Table.prototype._rendered = function() {
         var megaList = this.megaList;
         assert(megaList.$content, 'megaList.$content is not ready.');
-        megaList.content.style.height = megaList._calculated['contentHeight'] + "px";
-        Ps.update(this.megaList.listContainer);
+
+        if (megaList.content.tagName === "TBODY" && isIE) {
+            megaList.content.parentNode.style.height = megaList._calculated['contentHeight'] + "px";
+        }
+        else {
+            megaList.content.style.height = megaList._calculated['contentHeight'] + "px";
+        }
+
+        Ps.update(megaList.listContainer);
     };
 
     MegaList.RENDER_ADAPTERS.Table.DEFAULTS = {};
