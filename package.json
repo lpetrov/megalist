@@ -19,7 +19,7 @@
     "uglify": "^0.1.5"
   },
   "engines": {
-    "node": ">=0.10.0"
+    "node": ">=6.0.0"
   },
   "h5bp-configs": {
     "directories": {
