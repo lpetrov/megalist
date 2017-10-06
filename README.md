@@ -96,12 +96,12 @@ megaList.batchAdd([1,2,3]);
   1. Whenever a property of an item (e.g. title, size, icon, etc) that requires a DOM update for the specific list item 
   is an updated in your app, you need to call `megaList.itemUpdated(itemId)` and thats all, **do NOT update any DOM nodes
   at this point**.
-  2. Pass a`itemUpdatedFunction(nodeId, domNode)` callback to `MegaList.options`.
+  2. Pass an `itemUpdatedFunction(nodeId, domNode)` callback to `MegaList.options`.
   That callback function would be called every time when a DOM update is required.
   
   Basically, once steps 1 and 2 are done, your app would automatically ONLY update DOM
-  when needed (e.g. in the view port). Any update, that is needed for an itme which is
-  not visible in the viewport, would be scheduled for later, when the item is now visible. 
+  when needed (e.g. in the view port). Any update, that is needed for an item which is
+  not visible in the viewport, would not be ignored, so that when the DOM nodes is re-requested from `itemRenderFunction`.
 
   A simple demo can be found in: [examples/basic-list-item-updated.html](examples/basic-list-item-updated.html)
   
