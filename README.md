@@ -88,7 +88,7 @@ megaList.batchAdd([1,2,3]);
   that would add all "items" in a batch and only try to trigger 1 repaint/re-render of the list and calculations.
 
 * **Minimum DOM updates, even for really long lists, with high frequency updates in UIs**  
-  MegaList, since v0.2, added support for dynamic updates of listed items.
+  MegaList, since v0.1.6, added support for dynamic updates of listed items.
   
   This feature works best for UIs which list tons of data and have very high frequency updates.
    
